@@ -1,0 +1,21 @@
+---
+- name: Keepalived paketini kur
+  ansible.builtin.apt:
+    name: keepalived
+    state: present
+    update_cache: true
+
+- name: Keepalived konfigürasyon şablonunu kopyala
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart keepalived
+
+- name: Keepalived servisini başlat ve aktif et
+  ansible.builtin.systemd:
+    name: keepalived
+    state: started
+    enabled: true

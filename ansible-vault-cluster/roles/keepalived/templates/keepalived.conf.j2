@@ -1,0 +1,26 @@
+vrrp_script chk_vault {
+    script "pkill -0 vault"
+    interval 2
+    weight 2
+}
+
+vrrp_instance VI_1 {
+    state {{ state }}
+    interface {{ keepalived_interface }}
+    virtual_router_id {{ router_id }}
+    priority {{ keepalived_priority }}
+    advert_int 1
+
+    authentication {
+        auth_type PASS
+        auth_pass VaultSecretPass99!
+    }
+
+    virtual_ipaddress {
+        {{ vault_vip }}
+    }
+
+    track_script {
+        chk_vault
+    }
+}

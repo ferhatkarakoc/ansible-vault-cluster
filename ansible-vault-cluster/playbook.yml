@@ -1,0 +1,6 @@
+---
+- hosts: vault_cluster
+  become: true
+  roles:
+    - vault
+    - keepalived

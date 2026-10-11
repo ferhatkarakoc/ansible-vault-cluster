@@ -1,0 +1,78 @@
+---
+- name: Vault TLS dizinini oluştur
+  ansible.builtin.file:
+    path: /opt/vault/tls
+    state: directory
+    owner: vault
+    group: vault
+    mode: '0750'
+
+- name: OpenSSL konfigürasyon dosyasını oluştur
+  ansible.builtin.template:
+    src: openssl.cnf.j2
+    dest: /opt/vault/tls/openssl.cnf
+    owner: vault
+    group: vault
+    mode: '0640'
+
+- name: Self-signed TLS sertifikası ve private key üret
+  ansible.builtin.command: >
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    -keyout /opt/vault/tls/vault.key
+    -out /opt/vault/tls/vault.crt
+    -config /opt/vault/tls/openssl.cnf
+  args:
+    creates: /opt/vault/tls/vault.crt
+    # creates: Bu dosya zaten varsa komutu çalıştırma anlamına gelir.
+    # Prod ortam için elzemdir. Sertifikayı yenilemek istersen
+    # önce tüm node'larda elle sil:
+    # rm /opt/vault/tls/vault.crt /opt/vault/tls/vault.key
+    # Sonra playbook'u tekrar çalıştır.
+  run_once: true
+
+- name: Üretilen ortak key içeriğini oku
+  ansible.builtin.slurp:
+    src: /opt/vault/tls/vault.key
+  register: shared_vault_key
+  run_once: true
+
+- name: Üretilen ortak crt içeriğini oku
+  ansible.builtin.slurp:
+    src: /opt/vault/tls/vault.crt
+  register: shared_vault_crt
+  run_once: true
+
+- name: Ortak key dosyasını tüm düğümlere dağıt
+  ansible.builtin.copy:
+    content: "{{ shared_vault_key['content'] | b64decode }}"
+    dest: /opt/vault/tls/vault.key
+    owner: vault
+    group: vault
+    mode: '0600'
+
+- name: Ortak crt dosyasını tüm düğümlere dağıt
+  ansible.builtin.copy:
+    content: "{{ shared_vault_crt['content'] | b64decode }}"
+    dest: /opt/vault/tls/vault.crt
+    owner: vault
+    group: vault
+    mode: '0600'
+  notify: Restart vault
+  # Sertifika değişmişse Vault'u otomatik restart atar.
+  # Değişmemişse restart atmaz.
+
+# Self-signed sertifikayı sistem CA store'una ekle
+# Bunu yapmadan node'lar birbirinin sertifikasını tanımaz:
+# "x509: certificate signed by unknown authority" hatası alırsın
+- name: Sertifikayı sistem CA store'una kopyala
+  ansible.builtin.copy:
+    src: /opt/vault/tls/vault.crt
+    dest: /usr/local/share/ca-certificates/vault.crt
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: CA store'u güncelle
+  ansible.builtin.command: update-ca-certificates
+  changed_when: false
